@@ -30,6 +30,16 @@ Options:
         'X.Y.Z' acts as a placeholder for the version number.
         'Version X.Y.Z' is assumed if this option is omitted.
 
+-p --publish-from <path>
+        Specify the directory to publish from. See also '--prepare-pubdir'
+
+--prepare-pubdir <path>
+         When using the '--publish-from' option, use 
+         '--prepare-pubdir' to pass a script in that gets the publish 
+         directory ready for publication. The script is passed
+         PUBDIR, VERSION, and PREVIOUS_VERSION as environment
+         variables. xyz aborts if the script's exit code is not 0.
+
 -r --repo <repository>
         Specify the remote repository to which to 'git push'.
         The value must be either a URL or the name of a remote.
@@ -69,6 +79,8 @@ repo=origin
 declare -a scripts
 tag_template=vX.Y.Z
 dry_run=false
+pubdir=`pwd`
+declare -a pre_publish
 
 while (($# > 0)) ; do
   option="$1"
@@ -83,13 +95,15 @@ while (($# > 0)) ; do
       node -p "require('$dir/package.json').version"
       exit
       ;;
-    -b|--branch)    branch="$1"           ; shift ;;
-    -i|--increment) increment="$1"        ; shift ;;
-    -m|--message)   message_template="$1" ; shift ;;
-    -r|--repo)      repo="$1"             ; shift ;;
-    -s|--script)    scripts+=("$1")       ; shift ;;
-    -t|--tag)       tag_template="$1"     ; shift ;;
-    --dry-run)      dry_run=true          ;;
+    -b|--branch)       branch="$1"           ; shift ;;
+    -i|--increment)    increment="$1"        ; shift ;;
+    -m|--message)      message_template="$1" ; shift ;;
+    -r|--repo)         repo="$1"             ; shift ;;
+    -p|--publish-from) pubdir="$1"           ; shift ;;
+    -s|--script)       scripts+=("$1")       ; shift ;;
+    -t|--tag)          tag_template="$1"     ; shift ;;
+    --prepare-pubdir)  pre_publish+=("$1")   ; shift ;;
+    --dry-run)         dry_run=true          ;;
     *)
       echo "Unrecognized option $option" >&2
       exit 1
@@ -161,4 +175,8 @@ run "git commit --message '$message'"
 run "git tag --annotate '$tag' --message '$message'"
 run "git push '$repo' 'refs/heads/$branch' 'refs/tags/$tag'"
 
-run "npm publish"
+for prepub in "${pre_publish[@]}" ; do
+  [[ $prepub == /* ]] || prepub="$(pwd)/$prepub"
+  run "PUBDIR=$pubdir VERSION=$next_version PREVIOUS_VERSION=$version '$prepub'"
+done
+run "npm publish $pubdir"
